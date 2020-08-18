@@ -8,7 +8,7 @@ module.exports = app => {
     //Login User
     router.post("/signin",users.signin)
     //Lupa Password User
-    router.post("/reset_password",users.forgot_password)
+    router.post("/resetpass",users.resetpassword)
 
     router.put("/image-photo/:id/:name", users.uploadImageKTP);
 

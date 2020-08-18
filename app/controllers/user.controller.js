@@ -2,9 +2,11 @@ var jwt = require('jsonwebtoken')
 var bcrypt = require('bcrypt')
 var flash = require('express-flash')
 var async = require('async')
-// var nodemailer = require('nodemailer')
-// var crypto = require('crypto')
+var nodemailer = require('nodemailer')
+var crypto = require('crypto')
 var forgot = require('password-reset')
+const sgMail = require('@sendgrid/mail');
+sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 
 // const MongoClient = require('mongodb').MongoClient;
 const db = require('../models/index');
@@ -169,54 +171,48 @@ exports.signin = function (req, res) {
 
 
 //Lupa Password
-exports.forgot_password = function(req, res) {
-    async.waterfall([
-      function(done) {
-        User.findOne({
-          email: req.body.email
-        }).exec(function(err, users) {
-          if (users) {
-            done(err, users);
-          } else {
-            done('User not found.');
-          }
-        });
-      },
-      function(users, done) {
-        // create the random token
-        crypto.randomBytes(20, function(err, buffer) {
-          var token = buffer.toString('hex');
-          done(err, users, token);
-        });
-      },
-      function(users, token, done) {
-        User.findByIdAndUpdate({ _id: users._id }, { reset_password_token: token, reset_password_expires: Date.now() + 86400000 }, { upsert: true, new: true }).exec(function(err, new_user) {
-          done(err, token, new_user);
-        });
-      },
-      function(token, users, done) {
-        var data = {
-          to: users.email,
-          from: email,
-          template: 'forgot-password-email',
-          subject: 'Password help has arrived!',
-          context: {
-            url: 'http://localhost:8080/api/users/reset_password?token=' + token,
-            name: users.fullName.split(' ')[0]
-          }
-        };
-  
-        smtpTransport.sendMail(data, function(err) {
-          if (!err) {
-            return res.json({ message: 'Kindly check your email for further instructions' });
-          } else {
-            return done(err);
-          }
-        });
-      }
-    ], function(err) {
-      return res.status(422).json({ message: err });
-    });
-  };
+exports.resetpassword = function (req, res){
+	//Validate Request
+	if( !req.body.email){
+		res.status(400).send(
+			{
+				message: "Content can not be empty"
+			}
+		);
+		return;
+	}
 
-  
+	//reset password
+	const length = 8;
+	const chars = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    let new_password = '';
+    for (let i = length; i > 0; --i) new_password += chars[Math.floor(Math.random() * chars.length)];
+
+	var salt = bcrypt.genSaltSync(10);
+	var hash = bcrypt.hashSync(new_password, salt);
+
+	const email = req.body.email;
+	User.update({
+		password: hash
+	}, {
+		where: {email:email}
+	}).then( (result) => {
+		if(result == 1){
+			//send response
+			res.send({
+				status: true,
+				message: 'Your password has been reset',
+				data: {
+					email: email,
+					new_password : new_password,
+				}
+			});
+		} else {
+			res.send({
+				message: `Cannot reset password with email = ${email}`,
+			});
+		}
+	}).catch((err) =>{
+		res.status(500).send(err);
+	});
+};
